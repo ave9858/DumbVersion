@@ -84,3 +84,10 @@ dotnet publish -c Release -r <target_os>
 See [this page](https://learn.microsoft.com/en-us/dotnet/core/rid-catalog#known-rids) to find the rest of the possible target RIDs.
 
 Once completed, check the `<project>/bin/Release/net<version>/<target_os>/publish` folder. The resulting executables will be fully self-contained and don't require the user to install the .NET runtime.
+
+## Acknowledgements
+
+Without these two people, I would have had a much harder time finishing this project:
+
+- **[asdcorp](https://github.com/asdcorp)** - Came up with the idea of using FastCDC chunking for better diffing results. Developed a working prototype implementation that I used as a reference during early stages of development.
+- **[WitherOrNot](https://github.com/WitherOrNot)** - Co-developer, helped significantly in the late stages of development. Brought the Creator and Patcher to completion. 
