@@ -67,16 +67,15 @@ DumbVersionPatcher [-o/--output output_path] [base_file] [patch1.dvp, patch2.dvp
 
 ## Building
 
-DumbVersion relies heavily on modern .NET 8 features and is designed around NativeAOT deployment.
-
-See [this page](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/?tabs=windows%2Cnet8#prerequisites) for prerequisites for building this project.
+DumbVersion relies heavily on modern .NET features and is designed around NativeAOT deployment. All OSs require the .NET 8.0 SDK or newer to build the project.
+See [this page](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/?tabs=windows%2Cnet8#prerequisites) for more details on prerequisites.
 
 To build the binaries, run the publish command targeting your specific OS and architecture:
 
 ```bash
 dotnet publish -c Release -r <target_os>
 ```
-*(`-c Release` is included as some users may have `Debug` set to default instead.)*
+*(`-c Release` is included as some people may have `Debug` set to default instead.)*
 
 **Tested Target OS RIDs:**
 * Windows x64 - `win-x64`
@@ -84,4 +83,4 @@ dotnet publish -c Release -r <target_os>
 
 See [this page](https://learn.microsoft.com/en-us/dotnet/core/rid-catalog#known-rids) to find the rest of the possible target RIDs.
 
-Once completed, check the `<project>/bin/Release/net8.0/<target_os>/publish` folder. The resulting executables will be fully self-contained and don't require the user to install the .NET runtime.
+Once completed, check the `<project>/bin/Release/net<version>/<target_os>/publish` folder. The resulting executables will be fully self-contained and don't require the user to install the .NET runtime.
