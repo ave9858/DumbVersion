@@ -320,6 +320,12 @@ public unsafe class DiffEngine
 
     public static void ApplyPatch(string baseIsoPath, string patchPath, string targetIsoPath, Action<int> progressCallback)
     {
+        byte[]? dummyHash = null;
+        ApplyPatch(baseIsoPath, patchPath, targetIsoPath, progressCallback, ref dummyHash);
+    }
+
+    public static void ApplyPatch(string baseIsoPath, string patchPath, string targetIsoPath, Action<int> progressCallback, ref byte[]? knownBaseHash)
+    {
         using var patch = new PatchFile(patchPath, write: false);
         var targetSize = patch.TargetSize;
 
@@ -357,7 +363,16 @@ public unsafe class DiffEngine
             targetAccessor.SafeMemoryMappedViewHandle.AcquirePointer(ref targetPtr);
 
             Span<byte> actualBaseHash = stackalloc byte[32];
-            HashUtility.ComputeSHA256(basePtr, baseLength, actualBaseHash);
+
+            if (knownBaseHash is { Length: 32 })
+            {
+                knownBaseHash.AsSpan().CopyTo(actualBaseHash);
+            }
+            else
+            {
+                HashUtility.ComputeSHA256(basePtr, baseLength, actualBaseHash);
+                knownBaseHash = actualBaseHash.ToArray();
+            }
 
             if (!actualBaseHash.SequenceEqual(patch.ExpectedBaseHash))
                 throw new Exception("This file is not the correct base file.");

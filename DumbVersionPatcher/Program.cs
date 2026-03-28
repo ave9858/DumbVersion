@@ -18,11 +18,16 @@ internal class Program
             return;
         }
         
-        List<string> fileArgs = new();
+        List<string> fileArgs = [];
         string outputDest = "";
+        bool isBulk = false;
 
         for (int i = 0; i < args.Length; i++) {
-            if ((args[i] == "-o" ||  args[i] == "--output") && (i < args.Length - 1))
+            if (args[i].Equals("-bulk", StringComparison.OrdinalIgnoreCase) || args[i].Equals("--bulk", StringComparison.OrdinalIgnoreCase))
+            {
+                isBulk = true;
+            }
+            else if ((args[i] == "-o" || args[i] == "--output") && (i < args.Length - 1))
             {
                 outputDest = args[++i];
             }
@@ -32,7 +37,23 @@ internal class Program
             }
         }
 
-        if (args.Length == 0)
+        if (isBulk)
+        {
+            if (fileArgs.Count == 0)
+            {
+                PrintHelp();
+                return;
+            }
+
+            string patchFolder = fileArgs[0];
+            string baseSrc = fileArgs.Count > 1 ? fileArgs[1] : "";
+
+            RunBulkMode(patchFolder, baseSrc, outputDest);
+            EnterToExit();
+            return;
+        }
+
+        if (fileArgs.Count == 0)
         {
             var dir = AppContext.BaseDirectory;
             var patchFiles = Directory.EnumerateFiles(dir, "*.dvp").ToList();
@@ -43,38 +64,39 @@ internal class Program
             }
             else
             {
-                string selectedPatch = patchFiles[0];
-
-                if (patchFiles.Count > 1)
+                if (patchFiles.Count > 1 && !Console.IsOutputRedirected)
                 {
-                    if (!Console.IsOutputRedirected)
+                    Console.WriteLine("Multiple patch files found. Which one do you want to apply?");
+                    Console.WriteLine("[0] All patches in this directory");
+
+                    for (int i = 0; i < patchFiles.Count; i++)
+                        Console.WriteLine($"[{i + 1}] {Path.GetFileName(patchFiles[i])}");
+
+                    Console.Write("> ");
+                    if (int.TryParse(Console.ReadLine(), out int choice) && choice >= 0 && choice <= patchFiles.Count)
                     {
-                        Console.WriteLine("Multiple patch files found. Which one do you want to apply?");
-
-                        for (int i = 0; i < patchFiles.Count; i++)
-                            Console.WriteLine($"[{i + 1}] {Path.GetFileName(patchFiles[i])}");
-
-                        Console.Write("> ");
-                        if (int.TryParse(Console.ReadLine(), out int choice) && choice > 0 && choice <= patchFiles.Count)
+                        if (choice == 0)
                         {
-                            selectedPatch = patchFiles[choice - 1];
+                            RunBulkMode(dir, "", outputDest);
+                            EnterToExit();
+                            return;
                         }
-                        else
-                        {
-                            Console.WriteLine("Invalid selection");
-                            selectedPatch = "";
-                        }
+
+                        string selectedPatch = patchFiles[choice - 1];
+                        ProcessPatch(selectedPatch, "", outputDest, destAsFile: false);
                     }
                     else
                     {
-                        Console.WriteLine("Multiple patch files found. Please specify the patch file to be used as a command-line argument.");
-                        selectedPatch = "";
+                        Console.WriteLine("Invalid selection");
                     }
                 }
-
-                if (!string.IsNullOrEmpty(selectedPatch))
+                else if (patchFiles.Count == 1)
                 {
-                    ProcessPatch(selectedPatch, "", "", false);
+                    ProcessPatch(patchFiles[0], "", outputDest, destAsFile: false);
+                }
+                else
+                {
+                    Console.WriteLine("Multiple patch files found. Please specify the patch file to be used as a command-line argument, or use -bulk.");
                 }
             }
         }
@@ -108,82 +130,139 @@ internal class Program
         EnterToExit();
     }
 
-    private static void ProcessPatch(string patchFile, string isoSrc, string outputDest, bool destAsFile)
+    private static void RunBulkMode(string patchFolder, string baseSrc, string outputDest)
     {
-        var patchDir = Path.GetDirectoryName(Path.GetFullPath(patchFile));
-        var targetExt = "";
-
-        if (string.IsNullOrEmpty(patchDir))
+        if (!Directory.Exists(patchFolder))
         {
-            patchDir = AppContext.BaseDirectory;
-        }
-
-        List<string> isoFiles;
-
-        if (string.IsNullOrEmpty(isoSrc))
-        {
-            using var patch = new PatchFile(patchFile, write: false);
-            targetExt = Path.GetExtension(patch.BaseFileName);
-            var isoPath = Path.Combine(patchDir, patch.BaseFileName);
-
-            if (File.Exists(isoPath))
-            {
-                isoSrc = isoPath;
-                isoFiles = [isoSrc];
-            }
-            else
-            {
-                Console.WriteLine($"Base file {patch.BaseFileName} was not found in the same directory as {patchFile}.");
-                isoFiles = Directory.EnumerateFiles(patchDir, "*" + targetExt).ToList();
-            }
-        }
-        else
-        {
-            targetExt = Path.GetExtension(isoSrc);
-            isoFiles = [isoSrc];
-        }
-
-        if (isoFiles.Count == 0)
-        {
-            Console.WriteLine($"No base file(s) found in the same directory as {patchFile}.");
+            Console.WriteLine($"Patch directory does not exist: {patchFolder}");
             return;
         }
 
-        string selectedIso = isoFiles[0];
-
-        if (!Console.IsOutputRedirected)
+        var patchFiles = Directory.EnumerateFiles(patchFolder, "*.dvp").ToList();
+        if (patchFiles.Count == 0)
         {
-            if (isoFiles.Count > 1)
+            Console.WriteLine($"No .dvp files found in {patchFolder}");
+            return;
+        }
+
+        bool hasOutputDest = !string.IsNullOrEmpty(outputDest);
+        if (hasOutputDest && !Directory.Exists(outputDest))
+        {
+            Directory.CreateDirectory(outputDest);
+        }
+
+        Console.WriteLine($"\nFound {patchFiles.Count} patch files. Applying all...\n");
+
+        Dictionary<string, byte[]> baseHashCache = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var patchFile in patchFiles)
+        {
+            Console.WriteLine(new string('-', 60));
+            Console.WriteLine($"Processing Patch: {Path.GetFileName(patchFile)}");
+
+            ProcessPatch(patchFile, baseSrc, outputDest, destAsFile: false, isBulk: true, baseHashCache);
+        }
+
+        Console.WriteLine(new string('-', 60));
+        Console.WriteLine("\nBulk patching completed.");
+    }
+
+    private static void ProcessPatch(string patchFile, string isoSrc, string outputDest, bool destAsFile, bool isBulk = false, Dictionary<string, byte[]>? hashCache = null)
+    {
+        var patchDir = Path.GetDirectoryName(Path.GetFullPath(patchFile));
+        if (string.IsNullOrEmpty(patchDir)) patchDir = AppContext.BaseDirectory;
+
+        string targetExt = "";
+        string baseIsoPath = "";
+
+        using (var patch = new PatchFile(patchFile, write: false))
+        {
+            targetExt = Path.GetExtension(patch.BaseFileName);
+
+            if (string.IsNullOrEmpty(isoSrc))
             {
-                Console.WriteLine("\nMultiple base files found. Which one do you want to use?");
+                string exactPath = Path.Combine(patchDir, patch.BaseFileName);
 
-                for (int i = 0; i < isoFiles.Count; i++)
-                    Console.WriteLine($"[{i + 1}] {Path.GetFileName(isoFiles[i])}");
-
-                Console.Write("> ");
-                if (int.TryParse(Console.ReadLine(), out int choice) && choice > 0 && choice <= isoFiles.Count)
+                if (File.Exists(exactPath))
                 {
-                    selectedIso = isoFiles[choice - 1];
+                    baseIsoPath = exactPath;
                 }
                 else
                 {
-                    Console.WriteLine("Invalid selection.");
-                    return;
+                    var isoFiles = Directory.EnumerateFiles(patchDir, "*" + targetExt).ToList();
+                    if (isoFiles.Count == 1)
+                    {
+                        baseIsoPath = isoFiles[0];
+                    }
+                    else if (isoFiles.Count > 1)
+                    {
+                        if (isBulk)
+                        {
+                            Console.WriteLine(
+                                $"Error: Multiple potential base files found in {patchDir}. Cannot implicitly resolve base for {Path.GetFileName(patchFile)}.");
+                            return;
+                        }
+
+                        if (!Console.IsOutputRedirected)
+                        {
+                            Console.WriteLine("\nMultiple base files found. Which one do you want to use?");
+                            for (int i = 0; i < isoFiles.Count; i++)
+                                Console.WriteLine($"[{i + 1}] {Path.GetFileName(isoFiles[i])}");
+
+                            Console.Write("> ");
+                            if (int.TryParse(Console.ReadLine(), out int choice) && choice > 0 &&
+                                choice <= isoFiles.Count)
+                                baseIsoPath = isoFiles[choice - 1];
+                            else
+                            {
+                                Console.WriteLine("Invalid selection.");
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("Multiple base files found. Please specify the base file explicitly.");
+                            return;
+                        }
+                    }
                 }
             }
-        }
-        else
-        {
-            if (isoFiles.Count > 1)
+            else if (Directory.Exists(isoSrc))
             {
-                Console.WriteLine("Multiple base files found. Please specify the base file to be used as a command-line argument.");
-                return;
+                string exactPath = Path.Combine(isoSrc, patch.BaseFileName);
+                if (File.Exists(exactPath))
+                {
+                    baseIsoPath = exactPath;
+                }
+                else
+                {
+                    var isoFiles = Directory.EnumerateFiles(isoSrc, "*" + targetExt).ToList();
+                    if (isoFiles.Count == 1)
+                    {
+                        baseIsoPath = isoFiles[0];
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Error: Base file '{patch.BaseFileName}' not found in '{isoSrc}'.");
+                        return;
+                    }
+                }
             }
+            else
+            {
+                baseIsoPath = isoSrc;
+            }
+        }
+
+        if (string.IsNullOrEmpty(baseIsoPath) || !File.Exists(baseIsoPath))
+        {
+            Console.WriteLine($"Error: Required base file could not be resolved for {Path.GetFileName(patchFile)}.");
+            return;
         }
         
         bool hasOutputDest = !string.IsNullOrEmpty(outputDest);
         string targetIsoName = Path.GetFileNameWithoutExtension(patchFile) + targetExt;
-        string targetDir = (destAsFile || !hasOutputDest) ? (patchDir ?? "") : outputDest;
+        string targetDir = (destAsFile || !hasOutputDest) ? patchDir : outputDest;
 
         if (!Path.Exists(targetDir))
         {
@@ -191,33 +270,52 @@ internal class Program
             return;
         }
 
-        string targetIsoPath = (destAsFile && hasOutputDest) ? outputDest : 
-            string.IsNullOrEmpty(targetDir) ? targetIsoName : Path.Combine(targetDir, targetIsoName);
+        string targetIsoPath = (destAsFile && hasOutputDest) ? outputDest : Path.Combine(targetDir, targetIsoName);
 
-        if (targetIsoPath.Equals(selectedIso, StringComparison.OrdinalIgnoreCase))
+        if (targetIsoPath.Equals(baseIsoPath, StringComparison.OrdinalIgnoreCase))
         {
             targetIsoPath = targetIsoPath.Replace(targetExt, "_patched" + targetExt);
         }
 
-        if (File.Exists(targetIsoPath)) {
+        if (File.Exists(targetIsoPath))
+        {
+            if (isBulk)
+            {
+                Console.WriteLine($"File {targetIsoPath} already exists. Skipping.");
+                return;
+            }
+
             Console.Write($"File {targetIsoPath} already exists. Overwrite this file? [Y/N] ");
             var key = Console.ReadKey();
-
-            if (key.Key == ConsoleKey.N)
+            if (key.Key != ConsoleKey.Y)
             {
                 Console.WriteLine("\nSkipping this file.\n");
                 return;
             }
+
+            Console.WriteLine();
         }
 
         try
         {
-            DiffEngine.ApplyPatch(selectedIso, patchFile, targetIsoPath, DrawProgressBar);
-            Console.WriteLine("\n\nFile patched successfully.");
+            byte[]? knownHash = null;
+            if (hashCache != null && hashCache.TryGetValue(baseIsoPath, out var cached))
+            {
+                knownHash = cached;
+            }
+
+            DiffEngine.ApplyPatch(baseIsoPath, patchFile, targetIsoPath, DrawProgressBar, ref knownHash);
+
+            if (hashCache != null && knownHash != null)
+            {
+                hashCache[baseIsoPath] = knownHash;
+            }
+
+            Console.WriteLine("\n\nFile patched successfully.\n");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\nError: {ex.Message}");
+            Console.WriteLine($"\nError: {ex.Message}\n");
 
             if (File.Exists(targetIsoPath))
             {
@@ -225,8 +323,6 @@ internal class Program
                 try { File.Delete(targetIsoPath); } catch { /* ignored */ }
             }
         }
-
-        Console.WriteLine();
     }
 
     private static void PrintHelp()
@@ -234,11 +330,13 @@ internal class Program
         string progFn = Path.GetFileName(Environment.GetCommandLineArgs()[0]);
         Console.WriteLine("Usage:");
         Console.WriteLine($"{progFn} [-o/--output output_path] [base_file] [patch1.dvp, patch2.dvp ...]");
+        Console.WriteLine($"{progFn} -bulk <patch_folder> [base_file_or_folder] [-o/--output output_folder]");
+        Console.WriteLine("\nOptions:");
         Console.WriteLine("-o/--output        Output filename for single patch file, output directory for multiple patch files");
+        Console.WriteLine("-bulk              Apply all patches in a folder automatically (disables interactive prompts).");
         Console.WriteLine("\nNotes:");
         Console.WriteLine("If no arguments are given, .dvp files will be searched for in the folder this program is located in.");
         Console.WriteLine("If base file is not given, it will be searched for in the same directory as the .dvp file.");
-        Console.WriteLine("If this base file is not found, the directory of the patch file will be scanned for all .iso files.");
         Console.WriteLine("If multiple applicable .dvp or base files are found, a menu will be shown to select the correct files.");
     }
 
