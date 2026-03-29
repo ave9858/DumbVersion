@@ -4,7 +4,7 @@ namespace DumbVersionPatcher;
 
 internal class Program
 {
-    static void Main(string[] args)
+    private static void Main(string[] args)
     {
         Console.Title = "DumbVersion Patcher";
         Console.WriteLine("DumbVersion Patcher");
@@ -21,12 +21,17 @@ internal class Program
         List<string> fileArgs = [];
         string outputDest = "";
         bool isBulk = false;
+        bool isInfo = false;
 
         for (int i = 0; i < args.Length; i++) 
         {
             if (args[i].Equals("-bulk", StringComparison.OrdinalIgnoreCase) || args[i].Equals("--bulk", StringComparison.OrdinalIgnoreCase))
             {
                 isBulk = true;
+            }
+            else if (args[i].Equals("-info", StringComparison.OrdinalIgnoreCase) || args[i].Equals("--info", StringComparison.OrdinalIgnoreCase) || args[i].Equals("-i", StringComparison.OrdinalIgnoreCase))
+            {
+                isInfo = true;
             }
             else if (args[i] == "-o" || args[i] == "--output")
             {
@@ -44,6 +49,51 @@ internal class Program
             {
                 fileArgs.Add(args[i]);
             }
+        }
+
+        if (isInfo)
+        {
+            if (fileArgs.Count == 0)
+            {
+                var dir = AppContext.BaseDirectory;
+                var patchFiles = Directory.EnumerateFiles(dir, "*.dvp").ToList();
+
+                if (patchFiles.Count == 0)
+                {
+                    Console.WriteLine("No patch files found in the current directory.");
+                }
+                else
+                {
+                    foreach (var pf in patchFiles)
+                    {
+                        PrintPatchInfo(pf);
+                    }
+                }
+            }
+            else
+            {
+                foreach (var arg in fileArgs)
+                {
+                    if (Directory.Exists(arg))
+                    {
+                        var files = Directory.EnumerateFiles(arg, "*.dvp").ToList();
+                        if (files.Count == 0)
+                            Console.WriteLine($"No patch files found in directory {arg}");
+                        else
+                            foreach (var f in files) PrintPatchInfo(f);
+                    }
+                    else if (File.Exists(arg))
+                    {
+                        PrintPatchInfo(arg);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Path not found: {arg}");
+                    }
+                }
+            }
+
+            return;
         }
 
         if (isBulk)
@@ -75,28 +125,56 @@ internal class Program
             {
                 if (patchFiles.Count > 1 && !Console.IsOutputRedirected && !Console.IsInputRedirected)
                 {
-                    Console.WriteLine("Multiple patch files found. Which one do you want to apply?");
-                    Console.WriteLine("[0] All patches in this directory");
-
-                    for (int i = 0; i < patchFiles.Count; i++)
-                        Console.WriteLine($"[{i + 1}] {Path.GetFileName(patchFiles[i])}");
-
-                    Console.Write("> ");
-                    if (int.TryParse(Console.ReadLine(), out int choice) && choice >= 0 && choice <= patchFiles.Count)
+                    bool tuiActive = true;
+                    while (tuiActive)
                     {
-                        if (choice == 0)
+                        Console.WriteLine("Multiple patch files found. Which one do you want to apply?");
+                        Console.WriteLine("[0] All patches in this directory");
+
+                        for (int i = 0; i < patchFiles.Count; i++)
+                            Console.WriteLine($"[{i + 1}] {Path.GetFileName(patchFiles[i])}");
+
+                        Console.WriteLine("\nType 'info <number>' to view details about a patch.");
+                        Console.Write("> ");
+
+                        string? input = Console.ReadLine()?.Trim();
+                        if (string.IsNullOrEmpty(input)) continue;
+
+                        if (input.Equals("info", StringComparison.OrdinalIgnoreCase) ||
+                            input.StartsWith("info ", StringComparison.OrdinalIgnoreCase))
                         {
-                            RunBulkMode(dir, "", outputDest);
-                            EnterToExit();
-                            return;
+                            string numStr = input.Length > 4 ? input[4..].Trim() : "";
+                            if (int.TryParse(numStr, out int infoChoice) && infoChoice > 0 &&
+                                infoChoice <= patchFiles.Count)
+                            {
+                                Console.WriteLine();
+                                PrintPatchInfo(patchFiles[infoChoice - 1]);
+                                Console.WriteLine();
+                            }
+                            else
+                            {
+                                Console.WriteLine("Please specify a valid patch number.\n");
+                            }
+                            continue;
                         }
 
-                        string selectedPatch = patchFiles[choice - 1];
-                        ProcessPatch(selectedPatch, "", outputDest, destAsFile: false);
-                    }
-                    else
-                    {
-                        Console.WriteLine("Invalid selection");
+                        if (int.TryParse(input, out int choice) && choice >= 0 && choice <= patchFiles.Count)
+                        {
+                            tuiActive = false;
+                            if (choice == 0)
+                            {
+                                RunBulkMode(dir, "", outputDest);
+                                EnterToExit();
+                                return;
+                            }
+
+                            string selectedPatch = patchFiles[choice - 1];
+                            ProcessPatch(selectedPatch, "", outputDest, destAsFile: false);
+                        }
+                        else
+                        {
+                            Console.WriteLine("Invalid selection\n");
+                        }
                     }
                 }
                 else if (patchFiles.Count == 1)
@@ -182,7 +260,7 @@ internal class Program
         var patchDir = Path.GetDirectoryName(Path.GetFullPath(patchFile));
         if (string.IsNullOrEmpty(patchDir)) patchDir = AppContext.BaseDirectory;
 
-        string targetExt = "";
+        string targetExt;
         string baseIsoPath = "";
 
         using (var patch = new PatchFile(patchFile, write: false))
@@ -352,15 +430,36 @@ internal class Program
         }
     }
 
+    private static void PrintPatchInfo(string patchFile)
+    {
+        try
+        {
+            using var patch = new PatchFile(patchFile, write: false);
+            Console.WriteLine(new string('-', 60));
+            Console.WriteLine($"Patch File:   {Path.GetFileName(patchFile)}");
+            Console.WriteLine($"Base File:    {patch.BaseFileName}");
+            Console.WriteLine($"Target Size:  {patch.TargetSize} bytes");
+            Console.WriteLine($"Base Hash:    {Convert.ToHexString(patch.ExpectedBaseHash)}");
+            Console.WriteLine($"Target Hash:  {Convert.ToHexString(patch.ExpectedTargetHash)}");
+            Console.WriteLine(new string('-', 60));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error reading details from {Path.GetFileName(patchFile)}: {ex.Message}");
+        }
+    }
+
     private static void PrintHelp()
     {
         string progFn = Path.GetFileName(Environment.GetCommandLineArgs()[0]);
         Console.WriteLine("Usage:");
         Console.WriteLine($"{progFn} [-o/--output output_path] [base_file] [patch1.dvp, patch2.dvp ...]");
         Console.WriteLine($"{progFn} -bulk <patch_folder> [base_file_or_folder] [-o/--output output_folder]");
+        Console.WriteLine($"{progFn} -info <patch_file_or_folder>");
         Console.WriteLine("\nOptions:");
         Console.WriteLine("-o/--output        Output filename for single patch file, output directory for multiple patch files");
         Console.WriteLine("-bulk              Apply all patches in a folder automatically (disables interactive prompts).");
+        Console.WriteLine("-info / -i         Display patch file details (base hash, target hash, base filename) and exit.");
         Console.WriteLine("\nNotes:");
         Console.WriteLine("If no arguments are given, .dvp files will be searched for in the folder this program is located in.");
         Console.WriteLine("If base file is not given, it will be searched for in the same directory as the .dvp file.");

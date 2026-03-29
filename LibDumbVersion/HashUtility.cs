@@ -4,7 +4,7 @@ namespace LibDumbVersion;
 
 public static unsafe class HashUtility
 {
-    public static void ComputeHash(HashAlgorithmName hashAlg, byte* ptr, long length, Span<byte> outputHash)
+    private static void ComputeHash(HashAlgorithmName hashAlg, byte* ptr, long length, Span<byte> outputHash)
     {
         using var hasher = IncrementalHash.CreateHash(hashAlg);
         ComputeHashAppend(hasher, ptr, length);
