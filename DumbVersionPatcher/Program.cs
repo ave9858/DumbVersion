@@ -22,14 +22,23 @@ internal class Program
         string outputDest = "";
         bool isBulk = false;
 
-        for (int i = 0; i < args.Length; i++) {
+        for (int i = 0; i < args.Length; i++) 
+        {
             if (args[i].Equals("-bulk", StringComparison.OrdinalIgnoreCase) || args[i].Equals("--bulk", StringComparison.OrdinalIgnoreCase))
             {
                 isBulk = true;
             }
-            else if ((args[i] == "-o" || args[i] == "--output") && (i < args.Length - 1))
+            else if (args[i] == "-o" || args[i] == "--output")
             {
-                outputDest = args[++i];
+                if (i < args.Length - 1)
+                {
+                    outputDest = args[++i];
+                }
+                else
+                {
+                    Console.WriteLine("Error: -o/--output requires a path argument.");
+                    return;
+                }
             }
             else
             {
@@ -64,7 +73,7 @@ internal class Program
             }
             else
             {
-                if (patchFiles.Count > 1 && !Console.IsOutputRedirected)
+                if (patchFiles.Count > 1 && !Console.IsOutputRedirected && !Console.IsInputRedirected)
                 {
                     Console.WriteLine("Multiple patch files found. Which one do you want to apply?");
                     Console.WriteLine("[0] All patches in this directory");
@@ -153,7 +162,8 @@ internal class Program
 
         Console.WriteLine($"\nFound {patchFiles.Count} patch files. Applying all...\n");
 
-        Dictionary<string, byte[]> baseHashCache = new(StringComparer.OrdinalIgnoreCase);
+        var pathComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        Dictionary<string, byte[]> baseHashCache = new(pathComparer);
 
         foreach (var patchFile in patchFiles)
         {
@@ -203,15 +213,14 @@ internal class Program
                             return;
                         }
 
-                        if (!Console.IsOutputRedirected)
+                        if (!Console.IsOutputRedirected && !Console.IsInputRedirected)
                         {
                             Console.WriteLine("\nMultiple base files found. Which one do you want to use?");
                             for (int i = 0; i < isoFiles.Count; i++)
                                 Console.WriteLine($"[{i + 1}] {Path.GetFileName(isoFiles[i])}");
 
                             Console.Write("> ");
-                            if (int.TryParse(Console.ReadLine(), out int choice) && choice > 0 &&
-                                choice <= isoFiles.Count)
+                            if (int.TryParse(Console.ReadLine(), out int choice) && choice > 0 && choice <= isoFiles.Count)
                                 baseIsoPath = isoFiles[choice - 1];
                             else
                             {
@@ -261,20 +270,31 @@ internal class Program
         }
         
         bool hasOutputDest = !string.IsNullOrEmpty(outputDest);
-        string targetIsoName = Path.GetFileNameWithoutExtension(patchFile) + targetExt;
-        string targetDir = (destAsFile || !hasOutputDest) ? patchDir : outputDest;
+        bool isOutputDir = hasOutputDest && (!destAsFile || Directory.Exists(outputDest) ||
+                                             outputDest.EndsWith(Path.DirectorySeparatorChar) ||
+                                             outputDest.EndsWith(Path.AltDirectorySeparatorChar));
 
-        if (!Path.Exists(targetDir))
+        string targetIsoName = Path.GetFileNameWithoutExtension(patchFile) + targetExt;
+        string targetDir = isOutputDir ? outputDest : patchDir;
+
+        switch (isOutputDir)
         {
-            Console.WriteLine($"Output directory {targetDir} does not exist.\n");
-            return;
+            case true when !Directory.Exists(targetDir):
+                Directory.CreateDirectory(targetDir);
+                break;
+            case false when !Directory.Exists(targetDir):
+                Console.WriteLine($"Output directory {targetDir} does not exist.\n");
+                return;
         }
 
-        string targetIsoPath = (destAsFile && hasOutputDest) ? outputDest : Path.Combine(targetDir, targetIsoName);
+        string targetIsoPath = (hasOutputDest && !isOutputDir) ? outputDest : Path.Combine(targetDir, targetIsoName);
 
-        if (targetIsoPath.Equals(baseIsoPath, StringComparison.OrdinalIgnoreCase))
+        var pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (targetIsoPath.Equals(baseIsoPath, pathComparison))
         {
-            targetIsoPath = targetIsoPath.Replace(targetExt, "_patched" + targetExt);
+            string dir = Path.GetDirectoryName(targetIsoPath) ?? "";
+            string fName = Path.GetFileNameWithoutExtension(targetIsoPath);
+            targetIsoPath = Path.Combine(dir, fName + "_patched" + targetExt);
         }
 
         if (File.Exists(targetIsoPath))
@@ -282,6 +302,12 @@ internal class Program
             if (isBulk)
             {
                 Console.WriteLine($"File {targetIsoPath} already exists. Skipping.");
+                return;
+            }
+
+            if (Console.IsInputRedirected)
+            {
+                Console.WriteLine($"File {targetIsoPath} already exists.");
                 return;
             }
 
@@ -304,6 +330,7 @@ internal class Program
                 knownHash = cached;
             }
 
+            _lastProgress = -1;
             DiffEngine.ApplyPatch(baseIsoPath, patchFile, targetIsoPath, DrawProgressBar, ref knownHash);
 
             if (hashCache != null && knownHash != null)
@@ -340,20 +367,36 @@ internal class Program
         Console.WriteLine("If multiple applicable .dvp or base files are found, a menu will be shown to select the correct files.");
     }
 
+    private static int _lastProgress = -1;
+
     private static void DrawProgressBar(int progress)
     {
-        if (Console.IsOutputRedirected) return; // in case the patcher runs somewhere where stdout is restricted (docker or something)
+        if (Console.IsOutputRedirected) return;
+        if (progress == _lastProgress) return;
+        _lastProgress = progress;
+
         Console.CursorLeft = 0;
-        Console.Write("[");
+
+        Span<char> buffer = stackalloc char[64];
+        buffer[0] = '[';
         int filled = progress / 2;
-        Console.Write(new string('█', filled));
-        Console.Write(new string('░', 50 - filled));
-        Console.Write($"] {progress}% ");
+
+        for (int i = 0; i < filled; i++) buffer[1 + i] = '█';
+        for (int i = filled; i < 50; i++) buffer[1 + i] = '░';
+
+        buffer[51] = ']';
+        buffer[52] = ' ';
+
+        if (!progress.TryFormat(buffer[53..], out int charsWritten)) return;
+        buffer[53 + charsWritten] = '%';
+        buffer[54 + charsWritten] = ' ';
+
+        Console.Out.Write(buffer[..(55 + charsWritten)]);
     }
 
     private static void EnterToExit()
     {
-        if (Console.IsOutputRedirected) return;
+        if (Console.IsOutputRedirected || Console.IsInputRedirected) return;
         Console.WriteLine("Press Enter to exit.");
         Console.ReadLine();
     }

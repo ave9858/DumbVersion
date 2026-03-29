@@ -318,12 +318,6 @@ public unsafe class DiffEngine
         }
     }
 
-    public static void ApplyPatch(string baseIsoPath, string patchPath, string targetIsoPath, Action<int> progressCallback)
-    {
-        byte[]? dummyHash = null;
-        ApplyPatch(baseIsoPath, patchPath, targetIsoPath, progressCallback, ref dummyHash);
-    }
-
     public static void ApplyPatch(string baseIsoPath, string patchPath, string targetIsoPath, Action<int> progressCallback, ref byte[]? knownBaseHash)
     {
         using var patch = new PatchFile(patchPath, write: false);

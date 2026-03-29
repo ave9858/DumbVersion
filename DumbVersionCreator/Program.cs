@@ -34,11 +34,16 @@ internal class Program
             string patchFile;
 
             if (args.Length < 3)
-                patchFile =
-                    Path.Combine(Path.GetDirectoryName(targetIsoFile)!,
-                    Path.GetFileNameWithoutExtension(targetIsoFile) + ".dvp");
+            {
+                string? dir = Path.GetDirectoryName(targetIsoFile);
+                if (string.IsNullOrEmpty(dir)) dir = ".";
+
+                patchFile = Path.Combine(dir, Path.GetFileNameWithoutExtension(targetIsoFile) + ".dvp");
+            }
             else
+            {
                 patchFile = args[2];
+            }
 
             try
             {
@@ -84,8 +89,15 @@ internal class Program
                 Directory.CreateDirectory(outputFolder);
             }
 
+            var pathComparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
             var baseExt = Path.GetExtension(baseIsoFile);
-            var targetFiles = Directory.EnumerateFiles(targetFolder, "*" + baseExt).ToList();
+            var targetFiles = Directory.EnumerateFiles(targetFolder)
+                .Where(f => Path.GetExtension(f).Equals(baseExt, pathComparison))
+                .ToList();
+
             if (targetFiles.Count == 0)
             {
                 Console.WriteLine($"No base files found in {targetFolder}");
@@ -100,7 +112,7 @@ internal class Program
 
             foreach (var targetIsoFile in targetFiles)
             {
-                if (Path.GetFullPath(targetIsoFile).Equals(Path.GetFullPath(baseIsoFile), StringComparison.OrdinalIgnoreCase))
+                if (Path.GetFullPath(targetIsoFile).Equals(Path.GetFullPath(baseIsoFile), pathComparison))
                 {
                     continue;
                 }
