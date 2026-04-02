@@ -30,16 +30,26 @@ DumbVersion is split into two primary executables:
 
 The CLI tool is used to index base files, diff them against targets, and emit `.dvp` (DumbVersion Patch) files.
 
+**Single File Mode**    
 To create a patch from a single base file to a single target file:
 ```
 DumbVersionCreator <base_file> <target_file> [output.dvp]
 ```
 *(If `output.dvp` is omitted, it will automatically be placed in the target file's directory and be named the same as the target_file).*
 
-To create patches for multiple target files derived from the same base:
+**Bulk Mode**   
+To create patches for a specific folder of target files derived from the same base:
 ```
-DumbVersionCreator -bulk <base_file> <target_folder> [output_folder]
+DumbVersionCreator -bulk/--bulk <base_file> <target_folder> [output_folder]
 ```
+
+**Auto-bulk Mode**
+To pass just a base file to automatically generate patches for all files in the base file's folder that share the exact same extension. Output is placed in a `DVPs` subfolder:
+```
+DumbVersionCreator <base_file>
+```
+
+---
 
 ### Patch Application (`DumbVersionPatcher`)
 
@@ -52,16 +62,31 @@ Most end users can simply drop `DumbVersionPatcher` into a folder alongside thei
 DumbVersionPatcher
 ```
 * If multiple patches or base files are found, the patcher will prompt the user with an interactive selection menu.
+* You can type `0` to automatically bulk-apply all patches found in the directory.
+* You can type `info <number>` to inspect a patch's metadata (hashes, target size, base filename) without applying it.
 * Provides a real-time progress bar.
 * Prompts for confirmation if the user could be accidentally overwriting existing files.
 
 #### Command-Line Mode
 For automated scripts:
+
+**Apply Specific Patches**
 ```
 DumbVersionPatcher [-o/--output output_path] [base_file] [patch1.dvp, patch2.dvp ...]
 ```
-* **`-o/--output`**: Defines the output filename (if single patch) or the output directory (if applying multiple patches).
 * **`base_file`**: Explicitly specify the base file to patch against. If omitted, the patcher will automatically search the directory for the base file expected by the `.dvp` metadata.
+
+**Apply Directory in Bulk**
+```
+DumbVersionPatcher -bulk/--bulk <patch_folder> [base_file_or_folder] [-o/--output output_folder]
+```
+* Bypasses prompts and applies all `.dvp` files found in the target `<patch_folder>`.
+
+**Inspect Patch Info**
+```
+DumbVersionPatcher -info/-i <patch_file_or_folder>
+```
+* Reads the patch file headers and prints base hashes, target hashes, file sizes, and expected base filenames. Does not apply the patch.
 
 ---
 
