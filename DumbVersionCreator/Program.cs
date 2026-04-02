@@ -9,12 +9,28 @@ internal class Program
     {
         args = CommandLineUtility.SanitizeArgs(args);
 
-        if (args.Length < 2 ||
+        if (args.Length == 0 ||
             args.Contains("-h", StringComparer.OrdinalIgnoreCase) ||
             args.Contains("-?", StringComparer.OrdinalIgnoreCase) ||
             args.Contains("--help", StringComparer.OrdinalIgnoreCase))
         {
             PrintUsage();
+            return;
+        }
+
+        if (args.Length == 1)
+        {
+            string baseIsoFile = args[0];
+            string? targetFolder = Path.GetDirectoryName(baseIsoFile);
+            if (string.IsNullOrEmpty(targetFolder))
+            {
+                targetFolder = ".";
+            }
+
+            string outputFolder = Path.Combine(targetFolder, "DVPs");
+
+            RunBulkMode(baseIsoFile, targetFolder, outputFolder);
+            EnterToExit();
             return;
         }
 
@@ -69,9 +85,19 @@ internal class Program
     private static void PrintUsage()
     {
         Console.WriteLine("Single file mode:");
-        Console.WriteLine("  DumbVersionCreator <base_file> <target_file> [output.dvp]");
-        Console.WriteLine("\nBulk mode:");
-        Console.WriteLine("  DumbVersionCreator -bulk/--bulk <base_file> <target_folder> [output_folder]");
+        Console.WriteLine("  DumbVersionCreator <base_file> <target_file> [output.dvp]\n");
+        Console.WriteLine("Bulk mode:");
+        Console.WriteLine("  DumbVersionCreator -bulk/--bulk <base_file> <target_folder> [output_folder]\n");
+        Console.WriteLine("Auto-bulk mode:");
+        Console.WriteLine("  DumbVersionCreator <base_file>");
+        Console.WriteLine("  (Creates patches for all files in the base file's folder, outputs to 'DVPs' subfolder)");
+    }
+
+    private static void EnterToExit()
+    {
+        if (Console.IsOutputRedirected || Console.IsInputRedirected) return;
+        Console.WriteLine("Press Enter to exit.");
+        Console.ReadLine();
     }
 
     private static void RunBulkMode(string baseIsoFile, string targetFolder, string outputFolder)
@@ -106,7 +132,7 @@ internal class Program
 
             if (targetFiles.Count == 0)
             {
-                Console.WriteLine($"No base files found in {targetFolder}");
+                Console.WriteLine($"No files found matching extension {baseExt} in {targetFolder}");
                 return;
             }
 
@@ -115,6 +141,8 @@ internal class Program
             using var baseIndex = new BaseFileIndex(baseIsoFile);
             Console.WriteLine($"Base file indexed: {baseIndex.RecordCount} unique chunks");
             Console.WriteLine($"Took {stopwatch.Elapsed.TotalSeconds:0.00}s\n");
+
+            int processedCount = 0;
 
             foreach (var targetIsoFile in targetFiles)
             {
@@ -129,6 +157,7 @@ internal class Program
                 try
                 {
                     DiffEngine.CreatePatch(baseIndex, baseIsoFile, targetIsoFile, patchFile);
+                    processedCount++;
                 }
                 catch (Exception ex)
                 {
@@ -142,7 +171,9 @@ internal class Program
                 Console.WriteLine();
             }
 
-            Console.WriteLine("Bulk generation completed.");
+            Console.WriteLine(processedCount == 0
+                ? "No patches were created. Make sure there are target files with the same extension in the folder."
+                : $"Successfully created {processedCount} patch(es).");
         }
         catch (Exception ex)
         {
