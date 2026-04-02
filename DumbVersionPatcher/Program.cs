@@ -6,13 +6,17 @@ internal class Program
 {
     private static void Main(string[] args)
     {
+        args = CommandLineUtility.SanitizeArgs(args);
+
         Console.Title = "DumbVersion Patcher";
         Console.WriteLine("DumbVersion Patcher");
         Console.WriteLine(@" /\_/\  ");
         Console.WriteLine(@"( o.o ) ");
         Console.WriteLine(@" > ^ <");
 
-        if (args.Contains("-h") || args.Contains("-?") || args.Contains("--help"))
+        if (args.Contains("-h", StringComparer.OrdinalIgnoreCase) ||
+            args.Contains("-?", StringComparer.OrdinalIgnoreCase) ||
+            args.Contains("--help", StringComparer.OrdinalIgnoreCase))
         {
             PrintHelp();
             return;
@@ -23,7 +27,7 @@ internal class Program
         bool isBulk = false;
         bool isInfo = false;
 
-        for (int i = 0; i < args.Length; i++) 
+        for (int i = 0; i < args.Length; i++)
         {
             if (args[i].Equals("-bulk", StringComparison.OrdinalIgnoreCase) || args[i].Equals("--bulk", StringComparison.OrdinalIgnoreCase))
             {
@@ -33,7 +37,8 @@ internal class Program
             {
                 isInfo = true;
             }
-            else if (args[i] == "-o" || args[i] == "--output")
+            else if (args[i].Equals("-o", StringComparison.OrdinalIgnoreCase) || 
+                     args[i].Equals("--output", StringComparison.OrdinalIgnoreCase))
             {
                 if (i < args.Length - 1)
                 {
@@ -189,14 +194,15 @@ internal class Program
         }
         else
         {
-            string isoSrc = "";
-
-            if (!fileArgs[0].EndsWith(".dvp", StringComparison.OrdinalIgnoreCase))
-            {
-                isoSrc = fileArgs[0];
-            }
-
             var patchArgs = fileArgs.Where(x => x.EndsWith(".dvp", StringComparison.OrdinalIgnoreCase)).ToList();
+            var baseArgs = fileArgs.Where(x => !x.EndsWith(".dvp", StringComparison.OrdinalIgnoreCase)).ToList();
+
+            string isoSrc = baseArgs.Count > 0 ? baseArgs[0] : "";
+
+            if (baseArgs.Count > 1)
+            {
+                Console.WriteLine($"Warning: Multiple non-patch files provided. Using {isoSrc} as base file and ignoring the rest.");
+            }
 
             if (!patchArgs.Any())
             {
@@ -454,11 +460,11 @@ internal class Program
         string progFn = Path.GetFileName(Environment.GetCommandLineArgs()[0]);
         Console.WriteLine("Usage:");
         Console.WriteLine($"{progFn} [-o/--output output_path] [base_file] [patch1.dvp, patch2.dvp ...]");
-        Console.WriteLine($"{progFn} -bulk <patch_folder> [base_file_or_folder] [-o/--output output_folder]");
+        Console.WriteLine($"{progFn} -bulk/--bulk <patch_folder> [base_file_or_folder] [-o/--output output_folder]");
         Console.WriteLine($"{progFn} -info <patch_file_or_folder>");
         Console.WriteLine("\nOptions:");
         Console.WriteLine("-o/--output        Output filename for single patch file, output directory for multiple patch files");
-        Console.WriteLine("-bulk              Apply all patches in a folder automatically (disables interactive prompts).");
+        Console.WriteLine("-bulk/--bulk       Apply all patches in a folder automatically (disables interactive prompts).");
         Console.WriteLine("-info / -i         Display patch file details (base hash, target hash, base filename) and exit.");
         Console.WriteLine("\nNotes:");
         Console.WriteLine("If no arguments are given, .dvp files will be searched for in the folder this program is located in.");

@@ -7,13 +7,19 @@ internal class Program
 {
     private static void Main(string[] args)
     {
-        if (args.Length < 2)
+        args = CommandLineUtility.SanitizeArgs(args);
+
+        if (args.Length < 2 ||
+            args.Contains("-h", StringComparer.OrdinalIgnoreCase) ||
+            args.Contains("-?", StringComparer.OrdinalIgnoreCase) ||
+            args.Contains("--help", StringComparer.OrdinalIgnoreCase))
         {
             PrintUsage();
             return;
         }
 
-        if (args[0].Equals("-bulk", StringComparison.OrdinalIgnoreCase))
+        if (args[0].Equals("-bulk", StringComparison.OrdinalIgnoreCase) || 
+            args[0].Equals("--bulk", StringComparison.OrdinalIgnoreCase))
         {
             if (args.Length < 3)
             {
@@ -65,7 +71,7 @@ internal class Program
         Console.WriteLine("Single file mode:");
         Console.WriteLine("  DumbVersionCreator <base_file> <target_file> [output.dvp]");
         Console.WriteLine("\nBulk mode:");
-        Console.WriteLine("  DumbVersionCreator -bulk <base_file> <target_folder> [output_folder]");
+        Console.WriteLine("  DumbVersionCreator -bulk/--bulk <base_file> <target_folder> [output_folder]");
     }
 
     private static void RunBulkMode(string baseIsoFile, string targetFolder, string outputFolder)
