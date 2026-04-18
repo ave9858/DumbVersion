@@ -92,7 +92,7 @@ DumbVersionPatcher -info/-i <patch_file_or_folder>
 
 ## Building
 
-DumbVersion relies heavily on modern .NET features and is designed around NativeAOT deployment. All OSs require the .NET 8.0 SDK or newer to build the project.
+DumbVersion relies heavily on modern .NET features and is designed around NativeAOT deployment. All OSs require the .NET 10.0 SDK or newer to build the project.
 See [this page](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/?tabs=windows%2Cnet8#prerequisites) for more details on prerequisites.
 
 To build the binaries, run the publish command targeting your specific OS and architecture:
